@@ -55,5 +55,15 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
     throw new ApiError(response.status, detail);
   }
 
-  return (await response.json()) as T;
+  // 204 No Content (z.B. DELETE) hat keinen Body - nicht als JSON parsen
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  const text = await response.text();
+  if (!text) {
+    return undefined as T;
+  }
+
+  return JSON.parse(text) as T;
 }
