@@ -52,6 +52,8 @@ export interface AdminUser {
 export interface AdminRole {
   id: number;
   name: string;
+  user_count: number;
+  agent_count: number;
 }
 
 export interface AdminAgent {

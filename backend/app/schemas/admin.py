@@ -37,10 +37,17 @@ class RoleCreate(BaseModel):
 
 
 class RoleOut(BaseModel):
+    """Rollen-Ausgabe: interne ID bewusst nicht als Pflichtfeld für die Anzeige;
+
+    counts liefern die Daten für den Lösch-Bestätigungsdialog.
+    """
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     name: str
+    user_count: int = 0
+    agent_count: int = 0
 
 
 # --- Agents (vollständige Konfiguration nur für Admins) ---

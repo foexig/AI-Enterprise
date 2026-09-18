@@ -495,3 +495,41 @@ table td {
     max-width: 92%;
   }
 }
+
+/* ---------- Toolbar & Dropdown (Admin) ---------- */
+.toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.toolbar select {
+  flex: 1;
+  min-width: 200px;
+  max-width: 420px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+/* ---------- Modal (Lösch-Bestätigung) ---------- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(16, 24, 40, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 100;
+}
+
+.modal {
+  width: 100%;
+  max-width: 440px;
+  margin: 0;
+  box-shadow: 0 20px 50px rgba(16, 24, 40, 0.25);
+}

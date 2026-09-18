@@ -120,7 +120,41 @@ def update_user(
 
 @router.get("/roles", response_model=list[RoleOut])
 def list_roles(admin: User = Depends(get_current_admin), db: Session = Depends(get_db)):
-    return db.query(Role).order_by(Role.id).all()
+    """Rollen mit Anzahl zugewiesener Benutzer und Agents.
+
+    Die interne ID wird in der Oberfläche nicht mehr angezeigt; die Counts
+    sind die Basis für den Lösch-Bestätigungsdialog.
+    """
+    roles = db.query(Role).order_by(Role.name).all()
+    return [
+        RoleOut(id=role.id, name=role.name, user_count=len(role.users), agent_count=len(role.agents))
+        for role in roles
+    ]
+
+
+@router.delete("/roles/{role_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_role(
+    role_id: int,
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Rolle löschen. Zuordnungen zu Benutzern und Agents werden mit entfernt (CASCADE).
+
+    Das Frontend holt vorher die Bestätigung (inkl. Anzahl betroffener Benutzer).
+    """
+    role = db.get(Role, role_id)
+    if role is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Rolle nicht gefunden")
+
+    user_count = len(role.users)
+    agent_count = len(role.agents)
+    db.delete(role)
+    db.commit()
+    logger.info(
+        "Admin %s löschte Rolle role_id=%s (entfernte Zuordnungen: %s Benutzer, %s Agents)",
+        admin.id, role_id, user_count, agent_count,
+    )
+    return None
 
 
 @router.post("/roles", response_model=RoleOut, status_code=status.HTTP_201_CREATED)

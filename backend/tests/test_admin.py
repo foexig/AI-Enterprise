@@ -103,3 +103,50 @@ def test_admin_agent_list_contains_system_prompt(client, db):
     response = client.get("/api/admin/agents", headers=headers)
     assert response.status_code == 200
     assert any(a["system_prompt"] == "GEHEIM-PROMPT" for a in response.json())
+
+
+def test_role_list_has_counts_and_no_visible_id_meaning(client, db):
+    """Rollenliste liefert Benutzer-/Agent-Anzahlen für den Lösch-Dialog."""
+    from app.models import Agent
+
+    it = make_role(db, "IT")
+    make_user(db, "count1@example.com", roles=[it])
+    make_user(db, "count2@example.com", roles=[it])
+    make_agent(db, "IT Support", "it-support", roles=[it])
+    make_user(db, "admin-count@example.com", is_admin=True)
+    headers = login(client, "admin-count@example.com")
+
+    response = client.get("/api/admin/roles", headers=headers)
+    assert response.status_code == 200
+    it_role = next(r for r in response.json() if r["name"] == "IT")
+    assert it_role["user_count"] == 2
+    assert it_role["agent_count"] == 1
+
+
+def test_delete_role_removes_assignments(client, db):
+    """Rollen-Löschen entfernt Benutzer- und Agent-Zuordnungen mit (CASCADE)."""
+    from app.models import Agent, User
+
+    it = make_role(db, "IT")
+    user = make_user(db, "del-user@example.com", roles=[it])
+    agent = make_agent(db, "IT Support", "it-support", roles=[it])
+    make_user(db, "admin-del@example.com", is_admin=True)
+    headers = login(client, "admin-del@example.com")
+
+    response = client.delete(f"/api/admin/roles/{it.id}", headers=headers)
+    assert response.status_code == 204
+
+    db.expire_all()
+    user = db.get(User, user.id)
+    agent = db.get(Agent, agent.id)
+    assert user.roles == []
+    assert agent.roles == []
+    # Rolle existiert nicht mehr
+    assert client.get("/api/admin/roles", headers=headers).json() == []
+
+
+def test_delete_unknown_role_404(client, db):
+    make_user(db, "admin-ghost@example.com", is_admin=True)
+    headers = login(client, "admin-ghost@example.com")
+    response = client.delete("/api/admin/roles/99999", headers=headers)
+    assert response.status_code == 404
