@@ -142,7 +142,7 @@ export default function AdminPage() {
     const form = event.currentTarget;
     const data = new FormData(form);
     try {
-      const created = await apiFetch<AdminAgent>("/api/admin/agents", {
+      await apiFetch<AdminAgent>("/api/admin/agents", {
         method: "POST",
         body: JSON.stringify({
           name: data.get("name"),
@@ -156,8 +156,8 @@ export default function AdminPage() {
       form.reset();
       setShowCreateAgent(false);
       flash("Agent angelegt.");
+      // Der zuvor ausgewählte Agent bleibt ausgewählt
       await refresh();
-      setSelectedAgent(created);
     } catch (err) {
       handleFailure(err, "Anlegen fehlgeschlagen");
     }
@@ -356,7 +356,7 @@ export default function AdminPage() {
           )}
 
           {selectedAgent && (
-            <div className="card">
+            <div className="card" key={selectedAgent.id}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                 <h3>
                   {selectedAgent.name} <span className="muted">({selectedAgent.slug})</span>

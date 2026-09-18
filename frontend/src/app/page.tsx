@@ -136,32 +136,50 @@ export default function ChatPage() {
 
   async function sendMessage(contentOverride?: string) {
     const content = (contentOverride ?? input).trim();
-    if (!selectedAgent || !activeSession || !content || sending) return;
+    if (!selectedAgent || !content || sending) return;
+    setError(null);
     setInput("");
     setSending(true);
-    // Optimistisch die eigene Nachricht anzeigen
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: -Date.now(),
-        session_id: activeSession.id,
-        role: "user",
-        content,
-        created_at: new Date().toISOString(),
-      },
-    ]);
+
+    // Noch keine Session? Dann automatisch eine anlegen (erste Nachricht
+    // startet den Chat, ohne dass "+ Neuer Chat" geklickt werden muss).
+    let session = activeSession;
     try {
-      await apiFetch(`/api/sessions/${activeSession.id}/messages`, {
+      if (!session) {
+        session = await apiFetch<ChatSession>(`/api/agents/${selectedAgent.id}/sessions`, {
+          method: "POST",
+        });
+        setActiveSession(session);
+        const list = await apiFetch<ChatSession[]>(`/api/agents/${selectedAgent.id}/sessions`);
+        setSessions(list);
+      }
+
+      const sessionId = session.id;
+      // Optimistisch die eigene Nachricht anzeigen
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: -Date.now(),
+          session_id: sessionId,
+          role: "user",
+          content,
+          created_at: new Date().toISOString(),
+        },
+      ]);
+      await apiFetch(`/api/sessions/${sessionId}/messages`, {
         method: "POST",
         body: JSON.stringify({ content }),
       });
       // Gesamte Historie vom Server übernehmen (echte IDs + AI-Antwort)
-      const history = await apiFetch<ChatMessage[]>(`/api/sessions/${activeSession.id}/messages`);
+      const history = await apiFetch<ChatMessage[]>(`/api/sessions/${sessionId}/messages`);
       setMessages(history);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Senden fehlgeschlagen");
-      // Bei 403 (z.B. abgelaufene Session) optimistische Nachricht zurücknehmen
+      // Optimistische Nachricht zurücknehmen; ggf. kaputte Auswahl korrigieren
       setMessages((prev) => prev.filter((m) => m.id > 0));
+      if (session && session.id !== activeSession?.id) {
+        setActiveSession(session);
+      }
     } finally {
       setSending(false);
     }
@@ -348,13 +366,13 @@ export default function ChatPage() {
                         sendMessage();
                       }
                     }}
-                    disabled={!activeSession || sending}
+                    disabled={sending}
                     rows={1}
                   />
                   <button
                     className="send-btn"
                     onClick={() => sendMessage()}
-                    disabled={!activeSession || sending || !input.trim()}
+                    disabled={sending || !input.trim()}
                     aria-label="Senden"
                   >
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
