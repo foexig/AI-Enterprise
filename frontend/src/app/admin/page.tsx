@@ -71,9 +71,12 @@ export default function AdminPage() {
     setRoles(r);
     setAgents(a);
     setSelectedAgent((current) => {
-      if (!current) return null;
-      const fresh = a.find((agent) => agent.id === current.id);
-      return fresh ?? null;
+      // Auswahl beibehalten, wenn der Agent noch existiert; sonst automatisch der erste Agent
+      if (current) {
+        const fresh = a.find((agent) => agent.id === current.id);
+        return fresh ?? a[0] ?? null;
+      }
+      return a[0] ?? null;
     });
   }, []);
 
@@ -275,14 +278,11 @@ export default function AdminPage() {
           <div className="card">
             <div className="toolbar">
               <select
-                value={selectedAgent?.id ?? ""}
+                value={selectedAgent?.id ?? agents[0]?.id ?? ""}
                 onChange={(e) =>
-                  setSelectedAgent(
-                    e.target.value === "" ? null : agents.find((a) => a.id === Number(e.target.value)) ?? null
-                  )
+                  setSelectedAgent(agents.find((a) => a.id === Number(e.target.value)) ?? null)
                 }
               >
-                <option value="">Agent auswählen...</option>
                 {agents.map((agent) => (
                   <option
                     key={agent.id}
