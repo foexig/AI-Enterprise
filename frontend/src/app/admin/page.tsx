@@ -261,8 +261,13 @@ export default function AdminPage() {
         ))}
       </div>
 
-      {error && <div className="error-box">{error}</div>}
-      {notice && <div className="success-box">{notice}</div>}
+      {/* Erfolgs-/Fehlermeldungen als Toast unten rechts (Layout bleibt stabil) */}
+      {(error || notice) && (
+        <div className="toast-stack">
+          {error && <div className="toast error">{error}</div>}
+          {notice && <div className="toast success">{notice}</div>}
+        </div>
+      )}
 
       {/* ============ Agents ============ */}
       {tab === "agents" && (
