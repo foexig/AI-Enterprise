@@ -533,3 +533,21 @@ table td {
   margin: 0;
   box-shadow: 0 20px 50px rgba(16, 24, 40, 0.25);
 }
+
+/* ---------- Größere System-Prompt-Textfläche ---------- */
+.field textarea.prompt-area {
+  min-height: 260px;
+  line-height: 1.5;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 13.5px;
+}
+
+/* ---------- Farbige Agent-Einträge im Dropdown ---------- */
+option.option-active {
+  color: #047857;
+  font-weight: 600;
+}
+
+option.option-inactive {
+  color: #dc2626;
+}

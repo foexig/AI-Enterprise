@@ -7,10 +7,34 @@ import type { AdminAgent, AdminRole, AdminUser, CurrentUser } from "@/lib/types"
 
 // Vorschläge für die Modellauswahl; der gültige Wert kommt immer aus der Agent-Konfiguration
 const MODEL_SUGGESTIONS = [
+  // Anthropic
+  "eu.anthropic.claude-3-7-sonnet-20250219-v1:0",
   "eu.anthropic.claude-3-5-sonnet-20241022-v2:0",
   "eu.anthropic.claude-3-5-haiku-20241022-v2:0",
+  "anthropic.claude-3-7-sonnet-20250219-v1:0",
+  "anthropic.claude-3-5-sonnet-20240620-v1:0",
+  "anthropic.claude-3-haiku-20240307-v1:0",
+  // Amazon Nova
+  "eu.amazon.nova-pro-v1:0",
+  "eu.amazon.nova-lite-v1:0",
+  "eu.amazon.nova-micro-v1:0",
+  "amazon.nova-pro-v1:0",
+  "amazon.nova-lite-v1:0",
+  "amazon.nova-micro-v1:0",
+  // Amazon Titan
   "eu.amazon.titan-text-express-v1",
+  "eu.amazon.titan-text-lite-v1",
+  "amazon.titan-text-express-v1",
+  "amazon.titan-text-lite-v1",
+  // Meta Llama
   "eu.meta.llama3-1-70b-instruct-v1:0",
+  "eu.meta.llama3-1-8b-instruct-v1:0",
+  "meta.llama3-1-70b-instruct-v1:0",
+  "meta.llama3-1-8b-instruct-v1:0",
+  // Mistral
+  "eu.mistral.pixtral-large-2502-v1:0",
+  "mistral.mistral-large-2402-v1:0",
+  "mistral.mistral-small-2402-v1:0",
 ];
 
 type Tab = "agents" | "users" | "roles";
@@ -30,6 +54,9 @@ export default function AdminPage() {
   // Rollen-Tab: Lösch-Bestätigung
   const [roleToDelete, setRoleToDelete] = useState<AdminRole | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+
+  // Agents-Tab: Aktivieren/Deaktivieren-Bestätigung
+  const [toggleAgent, setToggleAgent] = useState<AdminAgent | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -252,7 +279,12 @@ export default function AdminPage() {
               >
                 <option value="">Agent auswählen...</option>
                 {agents.map((agent) => (
-                  <option key={agent.id} value={agent.id}>
+                  <option
+                    key={agent.id}
+                    value={agent.id}
+                    className={agent.is_active ? "option-active" : "option-inactive"}
+                  >
+                    {agent.is_active ? "● " : "○ "}
                     {agent.name}
                     {agent.is_active ? "" : " (deaktiviert)"}
                   </option>
@@ -296,7 +328,11 @@ export default function AdminPage() {
                 </div>
                 <div className="field">
                   <label>System Prompt</label>
-                  <textarea name="system_prompt" placeholder="Du bist der interne ...-Assistent..." />
+                  <textarea
+                    className="prompt-area"
+                    name="system_prompt"
+                    placeholder="Du bist der interne ...-Assistent..."
+                  />
                 </div>
                 <div>
                   <label style={{ fontWeight: 600, fontSize: 13 }}>Rollen mit Zugriff:</label>
@@ -346,21 +382,23 @@ export default function AdminPage() {
                     }
                   />
                 </div>
-                <div className="field">
-                  <label>Beschreibung</label>
-                  <input
-                    defaultValue={selectedAgent.description}
-                    onBlur={(e) =>
-                      e.target.value !== selectedAgent.description &&
-                      updateAgent(selectedAgent, { description: e.target.value })
-                    }
-                  />
-                </div>
+              </div>
+
+              <div className="field">
+                <label>Beschreibung</label>
+                <input
+                  defaultValue={selectedAgent.description}
+                  onBlur={(e) =>
+                    e.target.value !== selectedAgent.description &&
+                    updateAgent(selectedAgent, { description: e.target.value })
+                  }
+                />
               </div>
 
               <div className="field">
                 <label>System Prompt</label>
                 <textarea
+                  className="prompt-area"
                   defaultValue={selectedAgent.system_prompt}
                   onBlur={(e) =>
                     e.target.value !== selectedAgent.system_prompt &&
@@ -395,7 +433,7 @@ export default function AdminPage() {
               <div className="actions-row">
                 <button
                   className={`btn small ${selectedAgent.is_active ? "danger" : ""}`}
-                  onClick={() => updateAgent(selectedAgent, { is_active: !selectedAgent.is_active })}
+                  onClick={() => setToggleAgent(selectedAgent)}
                 >
                   {selectedAgent.is_active ? "Agent deaktivieren" : "Agent aktivieren"}
                 </button>
@@ -553,6 +591,38 @@ export default function AdminPage() {
             </form>
           </div>
         </>
+      )}
+
+      {/* ============ Bestätigung: Agent aktivieren/deaktivieren ============ */}
+      {toggleAgent && (
+        <div className="modal-backdrop" onClick={() => setToggleAgent(null)}>
+          <div className="card modal" onClick={(e) => e.stopPropagation()}>
+            <h3>{toggleAgent.is_active ? "Agent deaktivieren?" : "Agent aktivieren?"}</h3>
+            <p style={{ marginBottom: 8 }}>
+              {toggleAgent.is_active ? "Deaktivierter Zustand:" : "Aktivierter Zustand:"}
+            </p>
+            <p className="muted" style={{ marginBottom: 16 }}>
+              {toggleAgent.is_active
+                ? `Der Agent "${toggleAgent.name}" wird für alle Benutzer gesperrt. Laufende Sessions können nicht mehr verwendet werden.`
+                : `Der Agent "${toggleAgent.name}" wird wieder für alle freigegebenen Benutzer verfügbar sein.`}
+            </p>
+            <div className="actions-row">
+              <button
+                className={`btn ${toggleAgent.is_active ? "danger" : ""}`}
+                onClick={async () => {
+                  const agent = toggleAgent;
+                  setToggleAgent(null);
+                  await updateAgent(agent, { is_active: !agent.is_active });
+                }}
+              >
+                {toggleAgent.is_active ? "Ja, deaktivieren" : "Ja, aktivieren"}
+              </button>
+              <button className="btn secondary" onClick={() => setToggleAgent(null)}>
+                Abbrechen
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ============ Lösch-Bestätigung (Rollen) ============ */}
