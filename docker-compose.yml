@@ -1,0 +1,59 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-enterprise_ai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_db_password}
+      POSTGRES_DB: ${POSTGRES_DB:-enterprise_ai}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-enterprise_ai} -d ${POSTGRES_DB:-enterprise_ai}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "5432:5432"
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-enterprise_ai}:${POSTGRES_PASSWORD:-change_me_db_password}@db:5432/${POSTGRES_DB:-enterprise_ai}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-CHANGE_ME_TO_A_RANDOM_SECRET}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-480}
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-24}
+      CHAT_RETENTION_DAYS: ${CHAT_RETENTION_DAYS:-30}
+      MAX_HISTORY_MESSAGES: ${MAX_HISTORY_MESSAGES:-40}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      AWS_REGION: ${AWS_REGION:-eu-central-1}
+      BEDROCK_DEFAULT_MODEL_ID: ${BEDROCK_DEFAULT_MODEL_ID:-eu.anthropic.claude-3-5-sonnet-20241022-v2:0}
+      MOCK_BEDROCK: ${MOCK_BEDROCK:-true}
+      SEED_ON_START: ${SEED_ON_START:-true}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@example.com}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-change_me_admin_password}
+      SEED_DEMO_USER_EMAIL: ${SEED_DEMO_USER_EMAIL:-fabio@example.com}
+      SEED_DEMO_USER_PASSWORD: ${SEED_DEMO_USER_PASSWORD:-change_me_demo_password}
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
