@@ -5,17 +5,48 @@ import { useRouter } from "next/navigation";
 import { apiFetch, clearToken, getToken } from "@/lib/api";
 import type { Agent, ChatMessage, ChatSession, CurrentUser } from "@/lib/types";
 
-// dezente Icons pro Agent-Slug (wie in der Spezifikation skizziert)
-const AGENT_ICONS: Record<string, string> = {
-  "it-support": "🖥",
-  softwareentwicklung: "⌨",
-  logistik: "📦",
-  kundenservice: "👥",
-  einkauf: "💰",
-  buchhaltung: "🧾",
-};
-const DEFAULT_ICON = "🤖";
-const iconFor = (agent: Agent) => AGENT_ICONS[agent.slug] ?? DEFAULT_ICON;
+// Dezente, deterministische Avatar-Farben pro Agent (keine Emojis, moderner Assistenten-Look)
+const AGENT_COLORS = [
+  "#c96442",
+  "#7a6ee0",
+  "#3f8f6d",
+  "#4f8fbf",
+  "#b5813c",
+  "#b05575",
+  "#8a68c9",
+  "#5b8a72",
+];
+
+function hashString(value: string): number {
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash * 31 + value.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+const agentColor = (agent: Agent) => AGENT_COLORS[hashString(agent.slug) % AGENT_COLORS.length];
+const initials = (name: string) =>
+  name
+    .trim()
+    .split(/\s+/)
+    .map((part) => part[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
+function greeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 11) return "Guten Morgen";
+  if (hour < 18) return "Guten Tag";
+  return "Guten Abend";
+}
+
+const SUGGESTIONS = [
+  "Was kannst du für mich tun?",
+  "Fasse den letzten Vorfall zusammen",
+  "Ich brauche Hilfe bei einer Aufgabe",
+];
 
 export default function ChatPage() {
   const router = useRouter();
@@ -50,6 +81,12 @@ export default function ChatPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, sending]);
+
+  useEffect(() => {
+    if (!error) return;
+    const timer = setTimeout(() => setError(null), 3500);
+    return () => clearTimeout(timer);
+  }, [error]);
 
   const openAgent = useCallback(async (agent: Agent) => {
     setSelectedAgent(agent);
@@ -97,12 +134,11 @@ export default function ChatPage() {
     }
   }
 
-  async function sendMessage() {
-    if (!selectedAgent || !activeSession || !input.trim() || sending) return;
-    const content = input.trim();
+  async function sendMessage(contentOverride?: string) {
+    const content = (contentOverride ?? input).trim();
+    if (!selectedAgent || !activeSession || !content || sending) return;
     setInput("");
     setSending(true);
-    setError(null);
     // Optimistisch die eigene Nachricht anzeigen
     setMessages((prev) => [
       ...prev,
@@ -115,20 +151,16 @@ export default function ChatPage() {
       },
     ]);
     try {
-      const response = await apiFetch<{
-        message: ChatMessage;
-        input_tokens: number;
-        output_tokens: number;
-      }>(`/api/sessions/${activeSession.id}/messages`, {
+      await apiFetch(`/api/sessions/${activeSession.id}/messages`, {
         method: "POST",
         body: JSON.stringify({ content }),
       });
-      // echte Nutzer-Nachricht vom Server + AI-Antwort übernehmen
+      // Gesamte Historie vom Server übernehmen (echte IDs + AI-Antwort)
       const history = await apiFetch<ChatMessage[]>(`/api/sessions/${activeSession.id}/messages`);
       setMessages(history);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Senden fehlgeschlagen");
-      // Bei 403 (z.B. abgelaufene Session) State zurücksetzen
+      // Bei 403 (z.B. abgelaufene Session) optimistische Nachricht zurücknehmen
       setMessages((prev) => prev.filter((m) => m.id > 0));
     } finally {
       setSending(false);
@@ -144,16 +176,28 @@ export default function ChatPage() {
     return <div className="login-page"><p className="muted">Lade...</p></div>;
   }
 
+  const sessionLabel = (session: ChatSession) => {
+    const date = new Date(session.last_activity_at);
+    const today = new Date();
+    const isToday = date.toDateString() === today.toDateString();
+    return isToday
+      ? date.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
+      : date.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" });
+  };
+
   return (
     <div className="app-shell">
+      {/* ============ Sidebar ============ */}
       <aside className="sidebar">
-        <div className="brand">Enterprise AI</div>
+        <div className="brand">
+          <span className="brand-mark" aria-hidden />
+          Enterprise AI
+        </div>
+
         <div className="section-label">Agents</div>
         <nav>
           {agents.length === 0 && (
-            <p style={{ padding: "0 10px", fontSize: 13, color: "#98a2b3" }}>
-              Keine Agents für Sie freigegeben.
-            </p>
+            <p className="sidebar-hint">Keine Agents für Sie freigegeben.</p>
           )}
           {agents.map((agent) => (
             <button
@@ -161,99 +205,184 @@ export default function ChatPage() {
               className={`agent-item ${selectedAgent?.id === agent.id ? "active" : ""}`}
               onClick={() => openAgent(agent)}
             >
-              <span className="icon">{iconFor(agent)}</span>
-              <span>{agent.name}</span>
+              <span className="avatar" style={{ background: agentColor(agent) }}>
+                {initials(agent.name)}
+              </span>
+              <span className="agent-item-text">
+                <span className="name">{agent.name}</span>
+                {agent.description && <span className="desc">{agent.description}</span>}
+              </span>
             </button>
           ))}
         </nav>
-        <div className="footer">
-          <span>
-            {me.name}
-            {me.is_admin && " (Admin)"}
-          </span>
-          {me.is_admin && (
-            <button className="btn secondary small" onClick={() => router.push("/admin")}>
-              Admin-Bereich
+
+        <div className="sidebar-footer">
+          <div className="user-row">
+            <span className="avatar user">{initials(me.name)}</span>
+            <span className="user-meta">
+              <span className="user-name">{me.name}</span>
+              <span className="user-role">{me.is_admin ? "Administrator" : "Benutzer"}</span>
+            </span>
+          </div>
+          <div className="footer-actions">
+            {me.is_admin && (
+              <button className="btn secondary small" onClick={() => router.push("/admin")}>
+                Admin-Bereich
+              </button>
+            )}
+            <button className="btn secondary small" onClick={logout}>
+              Abmelden
             </button>
-          )}
-          <button className="btn secondary small" onClick={logout}>
-            Abmelden
-          </button>
+          </div>
         </div>
       </aside>
 
+      {/* ============ Hauptbereich ============ */}
       <main className="main">
         {!selectedAgent ? (
           <div className="chat-area">
             <div className="empty-state">
-              <div className="big-icon">🤖</div>
-              <h2>Wählen Sie einen Agent</h2>
+              <div className="greeting">
+                {greeting()}, {me.name.split(" ")[0]}
+              </div>
               <p className="muted">
-                Sie sehen ausschließlich die Agents, für die Sie freigeschaltet sind.
+                Wählen Sie links einen Agent, um zu starten. Sie sehen ausschließlich die Agents,
+                für die Sie freigeschaltet sind.
               </p>
             </div>
           </div>
         ) : (
           <>
             <div className="main-header">
-              <h2>{selectedAgent.name}</h2>
-              <p className="description">{selectedAgent.description}</p>
-            </div>
-
-            <div className="session-bar">
-              {sessions.map((session) => (
-                <button
-                  key={session.id}
-                  className={`session-pill ${activeSession?.id === session.id ? "active" : ""}`}
-                  onClick={() => openSession(session)}
-                >
-                  #{session.id} · {new Date(session.last_activity_at).toLocaleString("de-DE")}
+              <div className="header-top">
+                <h2>{selectedAgent.name}</h2>
+                {sessions.length > 0 && (
+                  <div className="session-bar">
+                    {sessions.map((session) => (
+                      <button
+                        key={session.id}
+                        className={`session-pill ${activeSession?.id === session.id ? "active" : ""}`}
+                        onClick={() => openSession(session)}
+                      >
+                        {sessionLabel(session)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <button className="btn secondary small" onClick={newSession}>
+                  + Neuer Chat
                 </button>
-              ))}
-              <button className="btn secondary small" onClick={newSession}>
-                + Neuer Chat
-              </button>
+              </div>
+              {selectedAgent.description && (
+                <p className="description">{selectedAgent.description}</p>
+              )}
             </div>
-
-            {error && <div className="error-box" style={{ margin: "12px 24px 0" }}>{error}</div>}
 
             <div className="chat-area">
               <div className="messages">
-                {messages.length === 0 && (
-                  <div className="empty-state">
-                    <p>Stellen Sie Ihre erste Frage an {selectedAgent.name}.</p>
-                  </div>
-                )}
-                {messages.map((message) => (
-                  <div key={message.id} className={`message ${message.role}`}>
-                    {message.content}
-                  </div>
-                ))}
-                {sending && <div className="message assistant muted">Antwort wird generiert...</div>}
-                <div ref={messagesEndRef} />
+                <div className="thread">
+                  {messages.length === 0 && !sending && (
+                    <div className="empty-state">
+                      <div className="greeting small">
+                        {greeting()}, {me.name.split(" ")[0]}
+                      </div>
+                      <p className="muted">Womit kann {selectedAgent.name} Ihnen helfen?</p>
+                      <div className="suggestion-row">
+                        {SUGGESTIONS.map((suggestion) => (
+                          <button
+                            key={suggestion}
+                            className="suggestion-chip"
+                            onClick={() => sendMessage(suggestion)}
+                          >
+                            {suggestion}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {messages.map((message) =>
+                    message.role === "assistant" ? (
+                      <div key={message.id} className="message assistant">
+                        <span className="avatar" style={{ background: agentColor(selectedAgent) }}>
+                          {initials(selectedAgent.name)}
+                        </span>
+                        <div className="msg-body">
+                          <div className="msg-author">{selectedAgent.name}</div>
+                          <div className="msg-content">{message.content}</div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div key={message.id} className="message user">
+                        {message.content}
+                      </div>
+                    )
+                  )}
+                  {sending && (
+                    <div className="message assistant">
+                      <span className="avatar" style={{ background: agentColor(selectedAgent) }}>
+                        {initials(selectedAgent.name)}
+                      </span>
+                      <div className="msg-body">
+                        <div className="msg-author">{selectedAgent.name}</div>
+                        <div className="typing-dots" aria-label="Antwort wird generiert">
+                          <span />
+                          <span />
+                          <span />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <div ref={messagesEndRef} />
+                </div>
               </div>
 
-              <div className="composer">
-                <textarea
-                  placeholder="Nachricht eingeben..."
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      sendMessage();
-                    }
-                  }}
-                  disabled={!activeSession || sending}
-                />
-                <button className="btn" onClick={sendMessage} disabled={!activeSession || sending || !input.trim()}>
-                  Senden
-                </button>
+              <div className="composer-wrap">
+                <div className="composer">
+                  <textarea
+                    placeholder={`Nachricht an ${selectedAgent.name}...`}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        sendMessage();
+                      }
+                    }}
+                    disabled={!activeSession || sending}
+                    rows={1}
+                  />
+                  <button
+                    className="send-btn"
+                    onClick={() => sendMessage()}
+                    disabled={!activeSession || sending || !input.trim()}
+                    aria-label="Senden"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+                      <path
+                        d="M2.5 8L13.5 2.5L10.5 8L13.5 13.5L2.5 8Z"
+                        fill="currentColor"
+                        stroke="currentColor"
+                        strokeWidth="1.2"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                </div>
+                <p className="composer-hint">
+                  Enter sendet · Shift+Enter für eine neue Zeile
+                </p>
               </div>
             </div>
           </>
         )}
       </main>
+
+      {/* Fehler als Toast unten rechts (Layout bleibt stabil) */}
+      {error && (
+        <div className="toast-stack">
+          <div className="toast error">{error}</div>
+        </div>
+      )}
     </div>
   );
 }
